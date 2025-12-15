@@ -261,23 +261,62 @@
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
+            if (isDragging) {
+                const dx = e.clientX - lastMouseX;
+                const dy = e.clientY - lastMouseY;
 
-            const dx = e.clientX - lastMouseX;
-            const dy = e.clientY - lastMouseY;
+                const totalDx = Math.abs(e.clientX - dragStartX);
+                const totalDy = Math.abs(e.clientY - dragStartY);
+                if (totalDx > 5 || totalDy > 5) {
+                    hasDragged = true;
+                }
 
-            const totalDx = Math.abs(e.clientX - dragStartX);
-            const totalDy = Math.abs(e.clientY - dragStartY);
-            if (totalDx > 5 || totalDy > 5) {
-                hasDragged = true;
+                panX += dx;
+                panY += dy;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                constrainPan();
+                requestRender();
+            } else {
+                // Update cursor based on hover position (pointer only on username text)
+                const showUsername = squareSize > 42;
+                let isOverText = false;
+
+                if (showUsername) {
+                    const col = Math.floor((e.clientX - panX) / squareSize);
+                    const row = Math.floor((e.clientY - panY) / squareSize);
+                    const index = row * cols + col;
+
+                    if (index >= 0 && index < tweets.length && col >= 0 && col < cols && row >= 0 && row < rows) {
+                        const [, username] = tweets[index].split(',');
+                        const fontSize = Math.max(8, squareSize * 0.2);
+                        ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+
+                        const textWidth = ctx.measureText(username).width;
+                        const maxWidth = squareSize - 4;
+                        const scale = textWidth > maxWidth ? maxWidth / textWidth : 1;
+                        const displayWidth = textWidth * scale;
+                        const displayHeight = fontSize * scale;
+
+                        const squareX = panX + col * squareSize;
+                        const squareY = panY + row * squareSize;
+                        const textCenterX = squareX + squareSize / 2;
+                        const textCenterY = squareY + squareSize / 2;
+
+                        const textLeft = textCenterX - displayWidth / 2;
+                        const textRight = textCenterX + displayWidth / 2;
+                        const textTop = textCenterY - displayHeight / 2;
+                        const textBottom = textCenterY + displayHeight / 2;
+
+                        if (e.clientX >= textLeft && e.clientX <= textRight &&
+                            e.clientY >= textTop && e.clientY <= textBottom) {
+                            isOverText = true;
+                        }
+                    }
+                }
+
+                canvas.style.cursor = isOverText ? 'pointer' : 'grab';
             }
-
-            panX += dx;
-            panY += dy;
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
-            constrainPan();
-            requestRender();
         });
 
         document.addEventListener('mouseup', () => {
