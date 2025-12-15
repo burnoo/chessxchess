@@ -344,6 +344,21 @@
         let touchStartX = 0;
         let touchStartY = 0;
         let touchHasDragged = false;
+        let lastPinchDist = 0;
+        let isPinching = false;
+
+        function getTouchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getTouchCenter(touches) {
+            return {
+                x: (touches[0].clientX + touches[1].clientX) / 2,
+                y: (touches[0].clientY + touches[1].clientY) / 2
+            };
+        }
 
         canvas.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
@@ -352,12 +367,32 @@
                 touchStartX = lastTouchX;
                 touchStartY = lastTouchY;
                 touchHasDragged = false;
+                isPinching = false;
+            } else if (e.touches.length === 2) {
+                isPinching = true;
+                touchHasDragged = true;
+                lastPinchDist = getTouchDistance(e.touches);
             }
         });
 
         canvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 1) {
-                e.preventDefault();
+            e.preventDefault();
+
+            if (e.touches.length === 2) {
+                // Pinch zoom
+                isPinching = true;
+                touchHasDragged = true;
+                const currentDist = getTouchDistance(e.touches);
+                const center = getTouchCenter(e.touches);
+
+                if (lastPinchDist > 0) {
+                    const factor = currentDist / lastPinchDist;
+                    zoom(factor, center.x, center.y);
+                }
+
+                lastPinchDist = currentDist;
+            } else if (e.touches.length === 1 && !isPinching) {
+                // Single finger pan
                 const dx = e.touches[0].clientX - lastTouchX;
                 const dy = e.touches[0].clientY - lastTouchY;
 
@@ -377,7 +412,17 @@
         }, { passive: false });
 
         canvas.addEventListener('touchend', (e) => {
-            if (!touchHasDragged && e.changedTouches.length === 1) {
+            if (e.touches.length === 0) {
+                lastPinchDist = 0;
+                isPinching = false;
+            } else if (e.touches.length === 1) {
+                // Switched from pinch to single touch
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+                lastPinchDist = 0;
+            }
+
+            if (!touchHasDragged && e.changedTouches.length === 1 && e.touches.length === 0) {
                 const touch = e.changedTouches[0];
                 const col = Math.floor((touch.clientX - panX) / squareSize);
                 const row = Math.floor((touch.clientY - panY) / squareSize);
