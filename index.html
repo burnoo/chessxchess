@@ -114,7 +114,7 @@
             const response = await fetch('tweets_id_username.csv');
             const text = await response.text();
             const lines = text.trim().split('\n');
-            tweets = lines.slice(1).reverse();
+            tweets = lines.slice(1);
 
             const totalTweets = tweets.length;
             cols = Math.ceil(Math.sqrt(totalTweets));
