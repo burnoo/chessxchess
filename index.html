@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Tweets</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #312e2b;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+            display: flex;
+            gap: 5px;
+        }
+
+        .controls button {
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 4px;
+            background: #312e2b;
+            color: #ebecd0;
+            font-size: 20px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .controls button:hover {
+            opacity: 1;
+        }
+
+        .controls input {
+            height: 36px;
+            padding: 0 10px;
+            border: none;
+            border-radius: 4px;
+            background: #312e2b;
+            color: #ebecd0;
+            font-size: 14px;
+            opacity: 0.8;
+            outline: none;
+            width: 150px;
+        }
+
+        .controls input::placeholder {
+            color: #ebecd0;
+            opacity: 0.5;
+        }
+
+        .controls input:focus {
+            opacity: 1;
+        }
+
+        #canvas {
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <input type="text" id="search" placeholder="Search username...">
+        <button id="zoomOut">-</button>
+        <button id="zoomIn">+</button>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let tweets = [];
+        let squareSize = 20;
+        let panX = 0;
+        let panY = 0;
+        let cols = 0;
+        let rows = 0;
+        let selectedIndex = -1;
+
+        let isDragging = false;
+        let hasDragged = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        let renderRequested = false;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            render();
+        }
+
+        async function loadTweets() {
+            const response = await fetch('tweets_id_username.csv');
+            const text = await response.text();
+            const lines = text.trim().split('\n');
+            tweets = lines.slice(1).reverse();
+
+            const totalTweets = tweets.length;
+            cols = Math.ceil(Math.sqrt(totalTweets));
+            rows = Math.ceil(totalTweets / cols);
+
+            // Calculate initial square size to fit whole board
+            const maxWidth = canvas.width;
+            const maxHeight = canvas.height;
+            squareSize = Math.floor(Math.min(maxWidth / cols, maxHeight / rows));
+
+            centerBoard();
+            render();
+        }
+
+        function centerBoard() {
+            const boardWidth = cols * squareSize;
+            const boardHeight = rows * squareSize;
+            panX = (canvas.width - boardWidth) / 2;
+            panY = (canvas.height - boardHeight) / 2;
+        }
+
+        function constrainPan() {
+            const boardWidth = cols * squareSize;
+            const boardHeight = rows * squareSize;
+
+            if (boardWidth <= canvas.width) {
+                panX = (canvas.width - boardWidth) / 2;
+            }
+            if (boardHeight <= canvas.height) {
+                panY = (canvas.height - boardHeight) / 2;
+            }
+        }
+
+        function requestRender() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(() => {
+                    renderRequested = false;
+                    render();
+                });
+            }
+        }
+
+        function render() {
+            ctx.fillStyle = '#312e2b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate visible range
+            const startCol = Math.max(0, Math.floor(-panX / squareSize));
+            const endCol = Math.min(cols, Math.ceil((canvas.width - panX) / squareSize));
+            const startRow = Math.max(0, Math.floor(-panY / squareSize));
+            const endRow = Math.min(rows, Math.ceil((canvas.height - panY) / squareSize));
+
+            const showUsername = squareSize > 42;
+            const fontSize = Math.max(8, squareSize * 0.2);
+
+            if (showUsername) {
+                ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+            }
+
+            // Draw visible squares
+            for (let row = startRow; row < endRow; row++) {
+                for (let col = startCol; col < endCol; col++) {
+                    const index = row * cols + col;
+                    const x = panX + col * squareSize;
+                    const y = panY + row * squareSize;
+                    const isLight = (row + col) % 2 === 0;
+
+                    // Draw square
+                    ctx.fillStyle = isLight ? '#ebecd0' : '#739552';
+                    ctx.fillRect(x, y, squareSize, squareSize);
+
+                    // Draw username if zoomed in enough and tweet exists
+                    if (showUsername && index < tweets.length) {
+                        const [, username] = tweets[index].split(',');
+                        ctx.fillStyle = isLight ? '#5d7a3a' : '#ebecd0';
+
+                        // Scale text to fit square
+                        const maxWidth = squareSize - 4;
+                        const textWidth = ctx.measureText(username).width;
+                        const scale = textWidth > maxWidth ? maxWidth / textWidth : 1;
+
+                        ctx.save();
+                        ctx.translate(x + squareSize / 2, y + squareSize / 2);
+                        ctx.scale(scale, scale);
+                        ctx.fillText(username, 0, 0);
+                        ctx.restore();
+                    }
+                }
+            }
+
+            // Draw selected square highlight
+            if (selectedIndex >= 0 && selectedIndex < tweets.length) {
+                const selRow = Math.floor(selectedIndex / cols);
+                const selCol = selectedIndex % cols;
+                const x = panX + selCol * squareSize;
+                const y = panY + selRow * squareSize;
+                ctx.strokeStyle = '#f5f682';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x + 1.5, y + 1.5, squareSize - 3, squareSize - 3);
+            }
+        }
+
+        function zoom(factor, centerX, centerY) {
+            const oldSize = squareSize;
+            squareSize = Math.max(3, Math.min(squareSize * factor, 200));
+
+            if (oldSize !== squareSize) {
+                const scale = squareSize / oldSize;
+                panX = centerX - (centerX - panX) * scale;
+                panY = centerY - (centerY - panY) * scale;
+                constrainPan();
+                requestRender();
+            }
+        }
+
+        // Zoom controls
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            zoom(1.4, canvas.width / 2, canvas.height / 2);
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            zoom(0.7, canvas.width / 2, canvas.height / 2);
+        });
+
+        // Mouse wheel zoom
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY > 0 ? 0.8 : 1.25;
+            zoom(factor, e.clientX, e.clientY);
+        }, { passive: false });
+
+        // Pan with mouse drag
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            hasDragged = false;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            canvas.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const dx = e.clientX - lastMouseX;
+            const dy = e.clientY - lastMouseY;
+
+            const totalDx = Math.abs(e.clientX - dragStartX);
+            const totalDy = Math.abs(e.clientY - dragStartY);
+            if (totalDx > 5 || totalDy > 5) {
+                hasDragged = true;
+            }
+
+            panX += dx;
+            panY += dy;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            constrainPan();
+            requestRender();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            canvas.style.cursor = 'grab';
+        });
+
+        // Click handling
+        canvas.addEventListener('click', (e) => {
+            if (hasDragged) return;
+
+            const col = Math.floor((e.clientX - panX) / squareSize);
+            const row = Math.floor((e.clientY - panY) / squareSize);
+            const index = row * cols + col;
+
+            if (index >= 0 && index < tweets.length && col >= 0 && col < cols && row >= 0 && row < rows) {
+                const [tweetId, username] = tweets[index].split(',');
+                window.open(`https://twitter.com/${username}/status/${tweetId}`, '_blank');
+            }
+        });
+
+        // Touch support
+        let lastTouchX = 0;
+        let lastTouchY = 0;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchHasDragged = false;
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+                touchStartX = lastTouchX;
+                touchStartY = lastTouchY;
+                touchHasDragged = false;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                const dx = e.touches[0].clientX - lastTouchX;
+                const dy = e.touches[0].clientY - lastTouchY;
+
+                const totalDx = Math.abs(e.touches[0].clientX - touchStartX);
+                const totalDy = Math.abs(e.touches[0].clientY - touchStartY);
+                if (totalDx > 5 || totalDy > 5) {
+                    touchHasDragged = true;
+                }
+
+                panX += dx;
+                panY += dy;
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+                constrainPan();
+                requestRender();
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (!touchHasDragged && e.changedTouches.length === 1) {
+                const touch = e.changedTouches[0];
+                const col = Math.floor((touch.clientX - panX) / squareSize);
+                const row = Math.floor((touch.clientY - panY) / squareSize);
+                const index = row * cols + col;
+
+                if (index >= 0 && index < tweets.length && col >= 0 && col < cols && row >= 0 && row < rows) {
+                    const [tweetId, username] = tweets[index].split(',');
+                    window.open(`https://twitter.com/${username}/status/${tweetId}`, '_blank');
+                }
+            }
+        });
+
+        // Search functionality
+        function searchUsername(query) {
+            selectedIndex = -1;
+
+            if (!query.trim()) {
+                requestRender();
+                return;
+            }
+
+            const lowerQuery = query.toLowerCase();
+            let foundIndex = tweets.findIndex(line => {
+                const [, username] = line.split(',');
+                return username.toLowerCase() === lowerQuery;
+            });
+
+            if (foundIndex === -1) {
+                foundIndex = tweets.findIndex(line => {
+                    const [, username] = line.split(',');
+                    return username.toLowerCase().includes(lowerQuery);
+                });
+            }
+
+            if (foundIndex === -1) {
+                requestRender();
+                return;
+            }
+
+            selectedIndex = foundIndex;
+            squareSize = Math.max(squareSize, 50);
+
+            const row = Math.floor(foundIndex / cols);
+            const col = foundIndex % cols;
+            const squareCenterX = col * squareSize + squareSize / 2;
+            const squareCenterY = row * squareSize + squareSize / 2;
+            panX = canvas.width / 2 - squareCenterX;
+            panY = canvas.height / 2 - squareCenterY;
+
+            constrainPan();
+            requestRender();
+        }
+
+        let searchTimeout = null;
+
+        document.getElementById('search').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchUsername(e.target.value);
+            }, 500);
+        });
+
+        document.getElementById('search').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                clearTimeout(searchTimeout);
+                searchUsername(e.target.value);
+            }
+        });
+
+        // Initialize
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        loadTweets();
+    </script>
+</body>
+</html>
